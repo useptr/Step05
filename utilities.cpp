@@ -3,6 +3,25 @@
 #include <numbers>
 
 #include "Tchar.h" // _T
+
+Acad::ErrorStatus openSelectedAcDbObject(const ACHAR* prompt, AcDbObject*& pO, AcDb::OpenMode mode) {
+	// Let the user select a block reference
+	ads_name ename;
+	ads_point pt;
+	if (acedEntSel(prompt, ename, pt) != RTNORM)
+		return Acad::eInvalidObjectId; // TODO chancge error
+	// Convert the ads_name to an AcDbObjectId 
+	AcDbObjectId idO{ AcDbObjectId::kNull };
+	Acad::ErrorStatus es = acdbGetObjectId(idO, ename);
+	if (es != Acad::eOk)
+		return es;
+	es = acdbOpenAcDbObject(pO, idO, mode);
+	if (es != Acad::eOk)
+		return es;
+	return Acad::eOk;
+}
+
+
 //
 // Create a new layer or return the ObjectId if it already exists
 //
