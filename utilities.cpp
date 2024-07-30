@@ -4,199 +4,173 @@
 
 #include "Tchar.h" // _T
 
-Acad::ErrorStatus openSelectedAcDbObject(const ACHAR* prompt, AcDbObject*& pO, AcDb::OpenMode mode) {
+Acad::ErrorStatus SelectAcDbObject(const ACHAR* aszPrompt, AcDbObjectId& arObjectId) {
+	arObjectId = AcDbObjectId::kNull;
 	// Let the user select a block reference
 	ads_name ename;
 	ads_point pt;
-	if (acedEntSel(prompt, ename, pt) != RTNORM)
-		return Acad::eInvalidObjectId; // TODO chancge error
+	if (acedEntSel(aszPrompt, ename, pt) != RTNORM)
+		return Acad::eInvalidObjectId; // TODO change error to a more appropriate one
 	// Convert the ads_name to an AcDbObjectId 
-	AcDbObjectId idO{ AcDbObjectId::kNull };
-	Acad::ErrorStatus es = acdbGetObjectId(idO, ename);
-	if (es != Acad::eOk)
-		return es;
-	es = acdbOpenAcDbObject(pO, idO, mode);
+	Acad::ErrorStatus es = acdbGetObjectId(arObjectId, ename);
 	if (es != Acad::eOk)
 		return es;
 	return Acad::eOk;
 }
-
 
 //
 // Create a new layer or return the ObjectId if it already exists
 //
 // In :
-// const TCHAR* layerName : layer name
+// const TCHAR* aszLayerName : layer aszBlockTableRecordName
 // Out :
-// AcDbObjectId& layerId : ObjectId of the created or existing layer
+// AcDbObjectId& arLayerId : ObjectId of the created or existing layer
 //
-Acad::ErrorStatus createLayer(const TCHAR* layerName, AcDbObjectId& layerId) {
+Acad::ErrorStatus CreateLayer(const TCHAR* aszLayerName, AcDbObjectId& arLayerId) {
 
-	layerId = AcDbObjectId::kNull;
+	arLayerId = AcDbObjectId::kNull;
 	// get the current working database acdbHostApplicationServices()->workingDatabase())
 	// Get the layer table from the current working database (AcDbLayerTable, AcDbDatabase::getLayerTable())
-	AcDbLayerTable* pLayerTable;
-	Acad::ErrorStatus es = acdbHostApplicationServices()->workingDatabase()->getLayerTable(pLayerTable);
-	if (es != Acad::eOk) {
-		acutPrintf(_T("\nERROR: Cannot open AcDbLayerTable"), layerName);
-		return es;
+	AcDbLayerTablePointer playerTable(acdbHostApplicationServices()->workingDatabase(), AcDb::kForRead);
+	if (playerTable.openStatus() != Acad::eOk) {
+		acutPrintf(_T("\nERROR: Cannot open LayerTable"));
+		return playerTable.openStatus();
 	}
-	// Check to see if a layer of the same name already exists(AcDbLayerTable::getAt()) If it already exists, get it's object ID and return it
-	es = pLayerTable->getAt(layerName, layerId, Adesk::kFalse);
-	if (es == Acad::eOk) {
-		acutPrintf(_T("\nINFO: Layer with name %s already exist"), layerName);
-		Acad::ErrorStatus es2 = pLayerTable->close();
-		if (es2 != Acad::eOk) {
-			acrx_abort(_T("\nApp failed to close AcDbLayerTable. ERROR: %s"),
-				acadErrorStatusText(es2));
-		}
-		return es;
+
+	// Check to see if a layer of the same aszBlockTableRecordName already exists(AcDbLayerTable::getAt()) If it already exists, get it's object ID and return it
+	if (playerTable->getAt(aszLayerName, arLayerId) == Acad::eOk) {
+		acutPrintf(_T("\nINFO: Layer with aszBlockTableRecordName '%s' already exist"), aszLayerName);
+		return Acad::eOk;
 	}
 	// If the layer does not already exist then we have to create it and add it to the layer table
-	AcDbLayerTableRecord* pLayerTableRecord = new AcDbLayerTableRecord;
-	if (nullptr == pLayerTableRecord) { // release resources
-		Acad::ErrorStatus es2 = pLayerTable->close();
-		if (es2 != Acad::eOk) {
-			acrx_abort(_T("\nApp failed to close AcDbLayerTable. ERROR: %s"),
-				acadErrorStatusText(es2));
-		}
-		return Acad::eOutOfMemory;
-	}
-
-	es = pLayerTableRecord->setName(layerName);
-	if (es != Acad::eOk) { // release resources
-		acutPrintf(_T("\nERROR: AcDbLayerTableRecord setName '%s'"), layerName);
-		delete pLayerTableRecord;
-		Acad::ErrorStatus es2 = pLayerTable->close();
-		if (es2 != Acad::eOk) {
-			acrx_abort(_T("\nApp failed to close AcDbLayerTable. ERROR: %s"),
-				acadErrorStatusText(es2));
-		}
+	AcDbLayerTableRecordPointer pLayerTableRecord;
+	Acad::ErrorStatus es = pLayerTableRecord.create();
+	if (es != Acad::eOk) {
+		acutPrintf(_T("\nERROR: Cannot create LayerTableRecord '%s'"), aszLayerName);
 		return es;
 	}
 
-	es = pLayerTable->upgradeOpen();
+	es = pLayerTableRecord->setName(aszLayerName);
 	if (es != Acad::eOk) { // release resources
-		acutPrintf(_T("\nERROR: AcDbLayerTableRecord upgradeOpen '%s'"), layerName);
-		delete pLayerTableRecord;
-		Acad::ErrorStatus es2 = pLayerTable->close();
-		if (es2 != Acad::eOk) {
-			acrx_abort(_T("\nApp failed to close AcDbLayerTable. ERROR: %s"),
-				acadErrorStatusText(es2));
-		}
+		acutPrintf(_T("\nERROR: LayerTableRecord setName '%s'"), aszLayerName);
+		return es;
+	}
+	// layer table will need to be opened for write
+	es = playerTable->upgradeOpen();
+	if (es != Acad::eOk) { // release resources
+		acutPrintf(_T("\nERROR: Cannot open LayerTable for write"));
+		return es;
+	}
+	// The newly created Layer Table Record will be added to the layer table
+	es = playerTable->add(arLayerId, pLayerTableRecord);
+	if (es != Acad::eOk) { // release resources
+		acutPrintf(_T("\nERROR: Cannot add record '%s' to LayerTable"), aszLayerName);
 		return es;
 	}
 
-	es = pLayerTable->add(layerId, pLayerTableRecord);
-	if (es != Acad::eOk) { // release resources
-		acutPrintf(_T("\nERROR: AcDbLayerTableRecord add '%s'"), layerName);
-		delete pLayerTableRecord;
-		Acad::ErrorStatus es2 = pLayerTable->close();
-		if (es2 != Acad::eOk) {
-			acrx_abort(_T("\nApp failed to close AcDbLayerTable. ERROR: %s"),
-				acadErrorStatusText(es2));
-		}
-		return es;
-	}
-
-	es = pLayerTableRecord->close();
-	if (es != Acad::eOk) { // release resources
-		acrx_abort(_T("\nApp failed to close AcDbLayerTableRecord with name %s. ERROR: %s"), layerName,
-			acadErrorStatusText(es));
-	}
-	es = pLayerTable->close();
-	if (es != Acad::eOk) { // release resources, I hate this api
-		acrx_abort(_T("\nApp failed to close AcDbLayerTable. ERROR: %s"),
-			acadErrorStatusText(es));
-	}
 	return Acad::eOk;
 }
-
 // 
 // Create a new block table record and add the entities of the employee to it 
 // 
 // In : 
-// const TCHAR* name : Name of block table record 
+// const TCHAR* aszBlockTableRecordName : name of block table record 
 // 
-Acad::ErrorStatus createBlockRecord(const TCHAR* name) { // TODO error checking
-	Acad::ErrorStatus es{ Acad::eOk };
-	// Get the block table from the current working database (AcDbBlockTable, AcDbDatabase::getBlockTable() ) 
-	AcDbBlockTable* pBlockTable = NULL;
-	if ((es = acdbHostApplicationServices()->workingDatabase()->getBlockTable(pBlockTable)) != Acad::eOk) {
-		acutPrintf(_T("\nERROR: Couldn't open workingDatabase"));
-		return es;
+Acad::ErrorStatus CreateBlockRecord(const TCHAR* aszBlockTableRecordName) { // TODO error checking
+	// Get the block table from the current working database
+	AcDbBlockTablePointer pBlockTable(acdbHostApplicationServices()->workingDatabase(), AcDb::kForRead);
+	if (pBlockTable.openStatus() != Acad::eOk) {
+		acutPrintf(_T("\nERROR: Cannot open BlockTable"));
+		return pBlockTable.openStatus();
 	}
 	//Check if the block table record already exists(AcDbBlockTable::has()).If it exists, return an error status(Acad::eDuplicateKey). Don't forget to close the block table.
-	if (pBlockTable->has(name)) {
-		acutPrintf(_T("\nERROR: Block table record with name %s already exists"), name);
-		pBlockTable->close();
+	if (pBlockTable->has(aszBlockTableRecordName)) {
+		acutPrintf(_T("\nERROR: Block table record with aszBlockTableRecordName %s already exists"), aszBlockTableRecordName);
 		return Acad::eDuplicateKey;
 	}
-	// Create a new blocktablerecord with the "new" operator
-	AcDbBlockTableRecord* pBlockTableRec = new AcDbBlockTableRecord();
-	pBlockTableRec->setName(name); // TODO check Acad::eOutOfMemory
+	// Create a new blocktablerecord
+	AcDbBlockTableRecordPointer pBlockTableRec;
+	Acad::ErrorStatus es = pBlockTableRec.create();
+	if (es != Acad::eOk) {
+		acutPrintf(_T("\nERROR: Cannot create LayerTableRecord '%s'"), aszBlockTableRecordName);
+		return es;
+	}
+	es = pBlockTableRec->setName(aszBlockTableRecordName);
+	if (es != Acad::eOk) {
+		acutPrintf(_T("\nERROR: BlockTableRecord setName '%s'"), aszBlockTableRecordName);
+		return es;
+	}
 	// Initialize the new block table record.Set the origin to(0, 0, 0) (AcDbBlockTableRecord::setOrigin(AcGePoint3d::origin)).
-	pBlockTableRec->setOrigin(AcGePoint3d::kOrigin);
-	if ((es = pBlockTable->upgradeOpen()) != Acad::eOk) {
-		acutPrintf(_T("\nERROR: Couldn't modify block table record"));
-		delete pBlockTableRec;
-		pBlockTable->close();
+	es = pBlockTableRec->setOrigin(AcGePoint3d::kOrigin);
+	if (es != Acad::eOk) {
+		acutPrintf(_T("\nERROR: BlockTableRecord '%s' setOrigin"), aszBlockTableRecordName);
+		return es;
+	}
+	es = pBlockTable->upgradeOpen();
+	if (es != Acad::eOk) {
+		acutPrintf(_T("\nERROR: Cannot open BlockTable for write"));
 		return es;
 	}
 	// Add the new block table record to the block table.
 	// add it to the block table (AcDbBlockTableRecord, AcDbBlockTable::add() )
-	if ((es = pBlockTable->add(pBlockTableRec)) != Acad::eOk) {
-		// The block table record has not been added to the block table, so we have to delete it.
-		pBlockTable->close();
-		delete pBlockTableRec;
+	es = pBlockTable->add(pBlockTableRec);
+	if (es != Acad::eOk) {
+		acutPrintf(_T("\nERROR: Cannot add record '%s' to BlockTable"), aszBlockTableRecordName);
 		return es;
 	}
-	pBlockTable->close();
 
 	// make circles (AcDbCircle) and an arc
 	// append them to the new block table record. (AcDbBlockTableRecord::appendAcDbEntity()
-	AcDbCircle* pFace = new AcDbCircle(AcGePoint3d::kOrigin, AcGeVector3d::kZAxis, 1.0);
+	AcDbObjectPointer<AcDbCircle> pFace; // TODO or call copy ctor with new AcDbCircle(AcGePoint3d::kOrigin, AcGeVector3d::kZAxis, 1.0)
+	pFace.create();
+	pFace->setCenter(AcGePoint3d::kOrigin);
+	pFace->setNormal(AcGeVector3d::kZAxis);
+	pFace->setRadius(1.0);
 	pFace->setColorIndex(2); // Yellow
-	if ((es = pBlockTableRec->appendAcDbEntity(pFace)) != Acad::eOk) {
-		delete pFace;
+	es = pBlockTableRec->appendAcDbEntity(pFace);
+	if (es != Acad::eOk) {
 		pBlockTableRec->erase();
-		pBlockTableRec->close();
 		return es;
 
 	}
-	pFace->close();
 
-	AcDbCircle* pLeftEye = new AcDbCircle(AcGePoint3d(0.33, 0.25, 0), AcGeVector3d::kZAxis, 0.1);
+	AcDbObjectPointer<AcDbCircle> pLeftEye;
+	pLeftEye.create();
+	pLeftEye->setCenter(AcGePoint3d(0.33, 0.25, 0));
+	pLeftEye->setNormal(AcGeVector3d::kZAxis);
+	pLeftEye->setRadius(0.1);
 	pLeftEye->setColorIndex(5);  // Blue
-	if ((es = pBlockTableRec->appendAcDbEntity(pLeftEye)) != Acad::eOk) {
-		delete pLeftEye;
+	es = pBlockTableRec->appendAcDbEntity(pLeftEye);
+	if (es != Acad::eOk) {
 		pBlockTableRec->erase();
-		pBlockTableRec->close();
 		return es;
 	}
-	pLeftEye->close();
 
-	AcDbCircle* pRightEye = new AcDbCircle(AcGePoint3d(-0.33, 0.25, 0), AcGeVector3d::kZAxis, 0.1);
+	AcDbObjectPointer<AcDbCircle> pRightEye;
+	pRightEye.create();
+	pRightEye->setCenter(AcGePoint3d(-0.33, 0.25, 0));
+	pRightEye->setNormal(AcGeVector3d::kZAxis);
+	pRightEye->setRadius(0.1);
 	pRightEye->setColorIndex(5);  // Blue
-	if ((es = pBlockTableRec->appendAcDbEntity(pRightEye)) != Acad::eOk) {
-		delete pRightEye;
+	es = pBlockTableRec->appendAcDbEntity(pRightEye);
+	if (es != Acad::eOk) {
 		pBlockTableRec->erase();
-		pBlockTableRec->close();
 		return es;
 	}
-	pRightEye->close();
 
-	constexpr double pi = std::numbers::pi_v<double>;
-	AcDbArc* pMouth = new AcDbArc(AcGePoint3d(0.0, 0.5, 0), 1.0, pi + (pi * 0.3), pi + (pi * 0.7));
+	constexpr double dPi = std::numbers::pi_v<double>;
+	AcDbObjectPointer<AcDbArc> pMouth;
+	pMouth.create();
+	pMouth->setCenter(AcGePoint3d(0.0, 0.5, 0));
+	pMouth->setRadius(1.0);
+	pMouth->setStartAngle(dPi + (dPi * 0.3));
+	pMouth->setEndAngle(dPi + (dPi * 0.7));
 	pMouth->setColorIndex(1);  // Red
-	if ((es = pBlockTableRec->appendAcDbEntity(pMouth)) != Acad::eOk) {
-		delete pMouth;
+	es = pBlockTableRec->appendAcDbEntity(pMouth);
+	if (es != Acad::eOk) {
 		pBlockTableRec->erase();
-		pBlockTableRec->close();
 		return es;
 	}
-	pMouth->close();
 
-	pBlockTableRec->close();
 	return Acad::eOk;
 }

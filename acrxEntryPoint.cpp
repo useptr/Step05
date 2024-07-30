@@ -77,7 +77,7 @@ public:
 	static void AsdkStep05_CREATE(void)
 	{
 		// Create a new block record named "EMPLOYEE"
-		if (createBlockRecord(_T("EMPLOYEE")) != Acad::eOk) {
+		if (CreateBlockRecord(_T("EMPLOYEE")) != Acad::eOk) {
 			acutPrintf(_T("\nERROR: Couldn't create block record"));
 			return;
 		}
@@ -86,43 +86,40 @@ public:
 
 	static void AsdkStep05_ADDDETAIL(void)
 	{
+
 		// Let the user select a block reference
-		AcDbObject* pO;
-		Acad::ErrorStatus es = openSelectedAcDbObject(_T("Select employee: "), pO, AcDb::kForWrite); // need kForWrite?
-		if (es != Acad::eOk)
+		AcDbObjectId objectId;
+		if (SelectAcDbObject(_T("Select employee: "), objectId) != Acad::eOk)
 			return;
 		// Check with the isKindOf() function that the user has selected a block reference 
-		if (!pO->isKindOf(AcDbBlockReference::desc())) {
+		AcDbObjectPointer<AcDbObject> pObject(objectId, AcDb::kForWrite);
+		if (!pObject->isKindOf(AcDbBlockReference::desc())) {
 			acutPrintf(_T("\nThis is not a block reference."));
-			pO->close();
 			return;
 		}
 		// Input employee data for employee ID; employee Cube; employee first name; employee last name 
-		int id, cubeNumber;
-		TCHAR strFirstName[133];
-		TCHAR strLastName[133];
-		if (acedGetInt(_T("Enter employee ID: "), &id) != RTNORM
-			|| acedGetInt(_T("Enter cube number: "), &cubeNumber) != RTNORM
-			|| acedGetString(0, _T("Enter employee first name: "), strFirstName) != RTNORM
-			|| acedGetString(0, _T("Enter employee last name: "), strLastName) != RTNORM
+		int nId, nCubeNumber;
+		TCHAR szFirstName[133];
+		TCHAR szLastName[133];
+		if (acedGetInt(_T("Enter employee ID: "), &nId) != RTNORM
+			|| acedGetInt(_T("Enter cube number: "), &nCubeNumber) != RTNORM
+			|| acedGetString(0, _T("Enter employee first name: "), szFirstName) != RTNORM
+			|| acedGetString(0, _T("Enter employee last name: "), szLastName) != RTNORM
 			) {
-			pO->close();
 			return;
 		}
 		// Get the extension dictionary of the EMPLOYEE block reference 
-		AcDbObjectId extDictId = pO->extensionDictionary();
+		AcDbObjectId extDictId = pObject->extensionDictionary();
 		if (AcDbObjectId::kNull == extDictId) { // If the EMPLOYEE block reference does not have an extension dictionary create one 
-			if (pO->createExtensionDictionary() != Acad::eOk) {
-				pO->close();
+			if (pObject->createExtensionDictionary() != Acad::eOk) {
 				acutPrintf(_T("\nFailed to create ext. dictionary."));
 				return;
 			}
-			extDictId = pO->extensionDictionary();
+			extDictId = pObject->extensionDictionary();
 		}
-		pO->close();
 		// Open the extension dictionary.
-		AcDbDictionary* pExtDict;
-		if (acdbOpenObject(pExtDict, extDictId, AcDb::kForWrite, Adesk::kTrue) != Acad::eOk) {
+		AcDbDictionaryPointer pExtDict(extDictId, AcDb::kForWrite);
+		if (pExtDict.openStatus() != Acad::eOk) {
 			acutPrintf(_T("\nFailed to open ext. dictionary."));
 			return;
 		}
@@ -130,166 +127,152 @@ public:
 		if (pExtDict->isErased())
 			pExtDict->erase(Adesk::kFalse);
 		// Retrieve the "ASDK_EMPLOYEE_DICTIONARY"
-		AcDbDictionary* pEmployeeDict{nullptr};
-		if (pExtDict->getAt(_T("ASDK_EMPLOYEE_DICTIONARY"), pEmployeeDict) == Acad::eKeyNotFound) {
+		AcDbObjectId employeeDictId{ AcDbObjectId::kNull };
+		AcDbDictionaryPointer pEmployeeDict;
+		if (pExtDict->getAt(_T("ASDK_EMPLOYEE_DICTIONARY"), employeeDictId) == Acad::eKeyNotFound) {
 			// If the "ASDK_EMLOYEE_DICTIONARY" AcDbDictionary does not exist, create an "ASDK_EMPLOYEE_DICTIONARY" AcDbDictionary and add it to the EMPLOYEE block reference extension dictionary. 
-			pEmployeeDict = new AcDbDictionary;
-			AcDbObjectId employeeDictId;
+			pEmployeeDict.create();
 			if (pExtDict->setAt(_T("ASDK_EMPLOYEE_DICTIONARY"), pEmployeeDict, employeeDictId) != Acad::eOk) {
-				delete pEmployeeDict;
-				pExtDict->close();
 				acutPrintf(_T("\nFailed to create the 'Employee' dictionary."));
 				return;
 			}
 		}
-		pExtDict->close();
-		if (nullptr == pEmployeeDict) {
+		else {
+			pEmployeeDict.open(employeeDictId, AcDb::kForWrite);
+		}
+		if (pEmployeeDict.openStatus() != Acad::eOk) {
 			acutPrintf(_T("\nFailed to create the 'Employee' dictionary."));
 			return;
 		}
 		// Check to see if an AsdkEmployeeDetails object is already present in the "ASDK_EMPLOYEE_DICTIONARY"
-		ADSKEmployeeDetails* pEmployeeDetails{nullptr};
-		if (pEmployeeDict->getAt(_T("DETAILS"), pEmployeeDetails) == Acad::eOk) {
-			pEmployeeDict->close();
+		AcDbObjectId employeeDetailstId;
+		if (pEmployeeDict->getAt(_T("DETAILS"), employeeDetailstId) == Acad::eOk) {
 			acutPrintf(_T("\nDetails already assign to that 'Employee' object."));
 			return;
 		}
+		AcDbObjectPointer<ADSKEmployeeDetails> pEmployeeDetails;
 		// If an AsdkEmployeeDetails object does not exist, create a new AsdkEmployeeDetails object and set its data. 
-		pEmployeeDetails = new ADSKEmployeeDetails;
-		pEmployeeDetails->setID(id);
-		pEmployeeDetails->setCube(cubeNumber);
-		pEmployeeDetails->setFirstName(strFirstName);
-		pEmployeeDetails->setLastName(strLastName);
-		AcDbObjectId employeeDetailstId;
+		pEmployeeDetails.create();
+		pEmployeeDetails->setID(nId);
+		pEmployeeDetails->setCube(nCubeNumber);
+		pEmployeeDetails->setFirstName(szFirstName);
+		pEmployeeDetails->setLastName(szLastName);
 		// Add a new AsdkEmployeeDetails object under the key "DETAILS" in the "ASDK_EMPLOYEE_DICTIONARY" 
 		if (pEmployeeDict->setAt(_T("DETAILS"), pEmployeeDetails, employeeDetailstId) != Acad::eOk) {
 			acutPrintf(_T("\nFailed to add details to that object."));
-			delete pEmployeeDetails;
-			pEmployeeDict->close();
 			return;
 
 		}
 		acutPrintf(_T("\nDetails successfully added!"));
-		pEmployeeDict->close();
-		pEmployeeDetails->close();
 	}
 	static void AsdkStep05_LISTDETAILS(void)
 	{
 		// Let the user select a block reference
-		AcDbObject* pO;
-		Acad::ErrorStatus es = openSelectedAcDbObject(_T("Select employee: "), pO, AcDb::kForRead);
-		if (es != Acad::eOk)
+		AcDbObjectId objectId;
+		if (SelectAcDbObject(_T("Select employee: "), objectId) != Acad::eOk)
 			return;
+		AcDbObjectPointer<AcDbObject> pObject(objectId);
 		// Check with the isKindOf() function that the user has selected a block reference 
-		if (!pO->isKindOf(AcDbBlockReference::desc())) { // Return if it is not a block reference
-			acutPrintf(_T("\nThis is not a block reference."));
-			pO->close();
+		if (!pObject->isKindOf(AcDbBlockReference::desc())) { // Return if it is not a block reference
+			acutPrintf(_T("\nThis is not a block reference"));
 			return;
 		}
 		// Retrieve the extension dictionary of the block reference. 
-		AcDbObjectId extDictId = pO->extensionDictionary();
-		pO->close();
-		if (extDictId == AcDbObjectId::kNull) { // If there is none return
-			return;
-		}
-		AcDbDictionary* pExtDict;
-		if (acdbOpenObject(pExtDict, extDictId, AcDb::kForRead, Adesk::kFalse) != Acad::eOk) {
-			acutPrintf(_T("\nFailed to open ext. dictionary."));
+		AcDbDictionaryPointer pExtDict(pObject->extensionDictionary());
+		if (pExtDict.openStatus() != Acad::eOk) { // If there is none return
+			acutPrintf(_T("\nFailed to open ext. dictionary"));
 			return;
 		}
 		// Retrieve the "ASDK_EMPLOYEE_DICTIONARY"
-		AcDbDictionary* pEmployeeDict{ nullptr };
-		if (pExtDict->getAt(_T("ASDK_EMPLOYEE_DICTIONARY"), pEmployeeDict) == Acad::eKeyNotFound) { // If there is none return.
-			pExtDict->close();
+		AcDbObjectId employeeDictId{ AcDbObjectId::kNull };
+		if (pExtDict->getAt(_T("ASDK_EMPLOYEE_DICTIONARY"), employeeDictId) == Acad::eKeyNotFound) { // If there is none return.
+			acutPrintf(_T("\nFailed to open ASDK_EMPLOYEE_DICTIONARY"));
 			return;
 		}
-		pExtDict->close();
+		AcDbDictionaryPointer pEmployeeDict(employeeDictId);
 		// Retrieve the AsdkEmployeeDetails object from the "ASDK_EMPLOYEE_DICTIONARY" under the "DETAILS" key.
-		ADSKEmployeeDetails* pEmployeeDetails{ nullptr };
-		if (pEmployeeDict->getAt(_T("DETAILS"), pEmployeeDetails) != Acad::eOk) {
-			// Nothing to do
-			pEmployeeDict->close();
+		AcDbObjectId employeeDetailstId;
+		if (pEmployeeDict->getAt(_T("DETAILS"), employeeDetailstId) != Acad::eOk) {
+			acutPrintf(_T("\nFailed to open DETAILS"));
 			return;
 		}
-		pEmployeeDict->close();
-		// Retrieve the AsdkEmployeeDetails object data and print the details. 
-		Adesk::Int32 i;
-		pEmployeeDetails->iD(i);
-		acutPrintf(_T("Employee's ID: %d\n"), i);
-		pEmployeeDetails->cube(i);
-		acutPrintf(_T("Employee's cube number: %d\n"), i);
-		TCHAR* st = NULL;
-		pEmployeeDetails->firstName(st);
-		acutPrintf(_T("Employee's first name: %s\n"), st);
-		delete[] st;
-		pEmployeeDetails->lastName(st);
-		acutPrintf(_T("Employee's last name: %s\n"), st);
-		delete[] st;
-		pEmployeeDetails->close();
+		AcDbObjectPointer<ADSKEmployeeDetails> pEmployeeDetails(employeeDetailstId);
+		if (pEmployeeDetails.openStatus() != Acad::eOk) {
+			acutPrintf(_T("\nFailed to open DETAILS"));
+			return;
+		}
+		// Retrieve the EmployeeDetails object data and print the details. 
+		Adesk::Int32 nField;
+		pEmployeeDetails->ID(nField);
+		acutPrintf(_T("Employee's ID: %d\n"), nField);
+		pEmployeeDetails->cube(nField);
+		acutPrintf(_T("Employee's cube number: %d\n"), nField);
+		TCHAR* szField{ nullptr }; // TODO improve
+		{
+			pEmployeeDetails->firstName(szField);
+			std::unique_ptr<TCHAR[]> pField(szField);
+			acutPrintf(_T("Employee's first name: %s\n"), szField);
+		}
+		
+		{
+			pEmployeeDetails->lastName(szField);
+			std::unique_ptr<TCHAR[]> pField(szField);
+			acutPrintf(_T("Employee's last name: %s\n"), szField);
+		}
 	}
 
 	static void AsdkStep05_REMOVEDETAIL(void)
 	{
 		// Let the user select a block reference
-		AcDbObject* pO;
-		Acad::ErrorStatus es = openSelectedAcDbObject(_T("Select employee: "), pO, AcDb::kForRead);
-		if (es != Acad::eOk)
+		AcDbObjectId objectId;
+		if (SelectAcDbObject(_T("Select employee: "), objectId) != Acad::eOk)
 			return;
-		if (!pO->isKindOf(AcDbBlockReference::desc())) {
+		AcDbObjectPointer<AcDbObject> pObject(objectId);
+		if (!pObject->isKindOf(AcDbBlockReference::desc())) {
 			acutPrintf(_T("\nThis is not a block reference."));
-			pO->close();
 			return;
 		}
 		// Retrieve the extension dictionary of the block reference. 
-		AcDbObjectId extDictId = pO->extensionDictionary();
-		pO->close();
-		if (extDictId == AcDbObjectId::kNull) { // If there is none return
+		AcDbDictionaryPointer pExtDict(pObject->extensionDictionary());
+		if (pExtDict.openStatus() != Acad::eOk) { // If there is none return
+			acutPrintf(_T("\nFailed to open ext. dictionary"));
 			return;
 		}
-		AcDbDictionary* pExtDict;
-		if (acdbOpenObject(pExtDict, extDictId, AcDb::kForWrite, Adesk::kFalse) != Acad::eOk) {
-			acutPrintf(_T("\nFailed to open ext. dictionary."));
+		// Retrieve the "ASDK_EMPLOYEE_DICTIONARY"
+		AcDbObjectId employeeDictId{ AcDbObjectId::kNull };
+		if (pExtDict->getAt(_T("ASDK_EMPLOYEE_DICTIONARY"), employeeDictId) == Acad::eKeyNotFound) { // If there is none return.
+			acutPrintf(_T("\nFailed to open ASDK_EMPLOYEE_DICTIONARY"));
 			return;
 		}
-		// See if our dictionary is already there
-		AcDbDictionary* pEmployeeDict;
-		if (pExtDict->getAt(_T("ASDK_EMPLOYEE_DICTIONARY"), pEmployeeDict) == Acad::eKeyNotFound) {
-			// Nothing to do if not
-			pExtDict->close();
-			return;
-		}
-		
-		ADSKEmployeeDetails* pEmployeeDetails{ nullptr };
+		AcDbDictionaryPointer pEmployeeDict(employeeDictId);
 		// Retrieve the AsdkEmployeeDetails object from the "ASDK_EMPLOYEE_DICTIONARY" under the "DETAILS" key
-		if (pEmployeeDict->getAt(_T("DETAILS"), pEmployeeDetails, AcDb::kForWrite) != Acad::eOk) {
-			pEmployeeDict->close();
-			pExtDict->close();
-			acutPrintf(_T("\nNo details assigned to that 'Employee' object."));
+		AcDbObjectId employeeDetailstId;
+		if (pEmployeeDict->getAt(_T("DETAILS"), employeeDetailstId) != Acad::eOk) {
+			acutPrintf(_T("\nFailed to open DETAILS"));
 			return;
 		}
-
+		AcDbObjectPointer<ADSKEmployeeDetails> pEmployeeDetails(employeeDetailstId, AcDb::kForWrite);
+		if (pEmployeeDetails.openStatus() != Acad::eOk) {
+			acutPrintf(_T("\nFailed to open DETAILS for write"));
+			return;
+		}
 		// Erase the AsdkEmployeeDetails object
 		pEmployeeDetails->erase();
-		pEmployeeDetails->close();
+		acutPrintf(_T("\nDetails successfully removed!"));
 		// Erase the dictionaries if they contains no more entries
 		if (pEmployeeDict->numEntries() == 0) {
 			if (!pEmployeeDict->isWriteEnabled() && pEmployeeDict->upgradeOpen() != Acad::eOk) {
-				pEmployeeDict->close();
-				pExtDict->close();
 				return;
 			}
 			pEmployeeDict->erase();
 		}
-		pEmployeeDict->close();
 		// Erase ext. dictionary if it has no more entries
 		if (pExtDict->numEntries() == 0) {
 			if (!pExtDict->isWriteEnabled() && pExtDict->upgradeOpen() != Acad::eOk) {
-				pExtDict->close();
 				return;
 			}
 			pExtDict->erase();
 		}
-		pExtDict->close();
 	}
 	
 } ;

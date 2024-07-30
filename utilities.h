@@ -1,9 +1,9 @@
 #pragma once
 #include "StdAfx.h" 
 //Declaration of createLayer():
-Acad::ErrorStatus createLayer(const TCHAR* layerName, AcDbObjectId& layerId);
+Acad::ErrorStatus CreateLayer(const TCHAR* aszLayerName, AcDbObjectId& arLayerId);
 
 //Declaration of createBlockRecord():
-Acad::ErrorStatus createBlockRecord(const TCHAR* name);
+Acad::ErrorStatus CreateBlockRecord(const TCHAR* aszBlockTableRecordName);
 
-Acad::ErrorStatus openSelectedAcDbObject(const ACHAR* prompt, AcDbObject*& pO, AcDb::OpenMode mode);
+Acad::ErrorStatus SelectAcDbObject(const ACHAR* aszPrompt, AcDbObjectId& arObjectId);
