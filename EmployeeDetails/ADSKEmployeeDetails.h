@@ -70,19 +70,19 @@ public:
 	virtual Acad::ErrorStatus dxfOutFields (AcDbDxfFiler *pFiler) const ;
 	virtual Acad::ErrorStatus dxfInFields (AcDbDxfFiler *pFiler) ;
 
-	Acad::ErrorStatus setID(const Adesk::Int32 ID);
-	Acad::ErrorStatus iD(Adesk::Int32& ID);
-	Acad::ErrorStatus setCube(const Adesk::Int32 cube);
+	Acad::ErrorStatus setID(const Adesk::Int32 anID);
+	Acad::ErrorStatus ID(Adesk::Int32& anID);
+	Acad::ErrorStatus setCube(const Adesk::Int32 anCube);
 	Acad::ErrorStatus cube(Adesk::Int32& cube);
-	Acad::ErrorStatus setFirstName(const TCHAR* firstName);
-	Acad::ErrorStatus firstName(TCHAR*& firstName);
-	Acad::ErrorStatus setLastName(const TCHAR* lastName);
-	Acad::ErrorStatus lastName(TCHAR*& lastName);
+	Acad::ErrorStatus setFirstName(const TCHAR* aszFirstName);
+	Acad::ErrorStatus firstName(TCHAR*& aszFirstName);
+	Acad::ErrorStatus setLastName(const TCHAR* aszLastName);
+	Acad::ErrorStatus lastName(TCHAR*& aszLastName);
 private:
-	Adesk::Int32 m_ID;
-	Adesk::Int32 m_cube;
-	TCHAR* m_firstName;
-	TCHAR* m_lastName;
+	Adesk::Int32 m_nID;
+	Adesk::Int32 m_nCube;
+	TCHAR* m_szfirstName;
+	TCHAR* m_szlastName;
 
 } ;
 
